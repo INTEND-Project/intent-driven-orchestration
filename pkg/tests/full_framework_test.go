@@ -25,6 +25,7 @@ import (
 	"github.com/intel/intent-driven-orchestration/pkg/planner"
 	"github.com/intel/intent-driven-orchestration/pkg/planner/actuators"
 	"github.com/intel/intent-driven-orchestration/pkg/planner/actuators/platform"
+	"github.com/intel/intent-driven-orchestration/pkg/planner/actuators/profiling"
 	"github.com/intel/intent-driven-orchestration/pkg/planner/actuators/scaling"
 	"github.com/intel/intent-driven-orchestration/pkg/planner/astar"
 	appsV1 "k8s.io/api/apps/v1"
@@ -102,6 +103,43 @@ func (t fileTracer) GetEffect(name string, group string, profileName string, _ i
 			}
 		}
 		tmp.Popts = popt
+		return tmp, nil
+	} else if group == "profiling" {
+		// retrieve effect data
+		tmp := constructor().(*profiling.CPUProfileEffect)
+		lookupTable := map[int64][]profiling.IndividualCPUEffect{}
+		if lookupData, ok := data["lookupTable"].(map[string]interface{}); ok {
+			for i, v := range lookupData {
+				key, err := strconv.ParseInt(i, 10, 64)
+				if err != nil {
+					return nil, fmt.Errorf("Error parsing key %v: %v", i, err)
+				}
+				rawEffects, ok := v.([]interface{})
+				if !ok {
+					return nil, fmt.Errorf("Error asserting value for key %v: expected []interface{}", i)
+				}
+
+				var effects []profiling.IndividualCPUEffect
+				for _, rawEffect := range rawEffects {
+					effectMap, ok := rawEffect.(map[string]interface{})
+					if !ok {
+						return nil, fmt.Errorf("Error asserting element in key %v: expected map[string]interface{}", i)
+					}
+
+					effect := profiling.IndividualCPUEffect{
+						ID:      int(effectMap["ID"].(float64)),
+						Latency: effectMap["latency"].(float64),
+					}
+					effects = append(effects, effect)
+				}
+
+				lookupTable[key] = effects
+			}
+		} else {
+			return nil, fmt.Errorf("Error in data[lookupTable]")
+		}
+		tmp.LookupTable = lookupTable
+		fmt.Println("lookupTable: ", tmp.LookupTable)
 		return tmp, nil
 	}
 	return nil, nil
@@ -467,6 +505,7 @@ func (f *testFixture) setWorkloadState(pods map[string]map[string]interface{}, r
 			ObjectMeta: metaV1.ObjectMeta{
 				Name:      "function-deployment",
 				Namespace: metaV1.NamespaceDefault,
+				//Annotations: annotations,
 			},
 			Spec: appsV1.DeploymentSpec{
 				Replicas: &repl,
@@ -476,6 +515,9 @@ func (f *testFixture) setWorkloadState(pods map[string]map[string]interface{}, r
 					},
 				},
 				Template: coreV1.PodTemplateSpec{
+					ObjectMeta: metaV1.ObjectMeta{
+						Annotations: annotations, // Add annotations at the pod spec level
+					},
 					Spec: coreV1.PodSpec{
 						Containers: []coreV1.Container{
 							{
@@ -491,6 +533,21 @@ func (f *testFixture) setWorkloadState(pods map[string]map[string]interface{}, r
 			},
 		}
 		_, err := f.k8sClient.AppsV1().Deployments("default").Create(context.TODO(), deployment, metaV1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("Could not add deployment: %v", err)
+		}
+	} else {
+		// Get list of pods managed by this deployment (res)
+		podList, err := f.k8sClient.CoreV1().Pods(res.Namespace).List(context.TODO(), metaV1.ListOptions{
+			LabelSelector: "app=sample-function",
+		})
+		if err == nil {
+			for _, pod := range podList.Items {
+				pod.Annotations = annotations
+				_, err = f.k8sClient.CoreV1().Pods("default").Update(context.TODO(), &pod, metaV1.UpdateOptions{})
+			}
+		}
+		_, err = f.k8sClient.AppsV1().Deployments("default").Update(context.TODO(), res, metaV1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Could not add deployment: %v", err)
 		}
@@ -565,6 +622,12 @@ func (f *testFixture) setWorkloadState(pods map[string]map[string]interface{}, r
 			}
 		}
 	}
+
+	// Force informer resync to propagate the updated state
+	f.k8sInformer.Core().V1().Pods().Informer().GetIndexer().Resync()
+
+	// Wait for state propagation
+	time.Sleep(2 * time.Millisecond * timeoutInMillis)
 }
 
 // setupIntent defines the initial intent.
@@ -604,6 +667,7 @@ func (f *testFixture) setDesiredObjectives(name string, objectives map[string]fl
 	if err != nil {
 		klog.Errorf("Could not retrieve previous set intent: %v.", err)
 	}
+	fmt.Printf("Event current objectives: %v\n", myIntent.Spec.Objectives)
 	changed := false
 	myIntent = myIntent.DeepCopy()
 	myIntent.ResourceVersion += "1"
@@ -613,11 +677,43 @@ func (f *testFixture) setDesiredObjectives(name string, objectives map[string]fl
 			changed = true
 		}
 	}
+
+	// check new objectives
+	for name, value := range objectives {
+		found := false
+		for _, existing := range myIntent.Spec.Objectives {
+			if existing.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Add new objective
+			newObjective := v1alpha1.TargetObjective{
+				Name:       name,
+				MeasuredBy: name,
+				Value:      value,
+			}
+			myIntent.Spec.Objectives = append(myIntent.Spec.Objectives, newObjective)
+			changed = true
+		}
+	}
+	// Remove objectives that are no longer present in the new objectives map
+	var updatedObjectives []v1alpha1.TargetObjective
+	for _, objv := range myIntent.Spec.Objectives {
+		if _, exists := objectives[objv.Name]; exists {
+			updatedObjectives = append(updatedObjectives, objv)
+		} else {
+			changed = true
+		}
+	}
+	myIntent.Spec.Objectives = updatedObjectives
 	if changed {
 		_, err = f.intentClient.IdoV1alpha1().Intents(tmp[0]).Update(context.TODO(), myIntent, metaV1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("Could not update intent: %v.", err)
 		}
+		fmt.Printf("Event updated objectives: %v\n", myIntent.Spec.Objectives)
 	} else {
 		klog.Infof("No change in intent - will not update: %v", objectives)
 	}
@@ -695,15 +791,21 @@ func runTrace(env testEnvironment, t *testing.T, callback func([]actuators.Actua
 	// now replay rest of the trace.
 	for i := 1; i < len(events); i++ {
 		fmt.Println(strconv.Itoa(i) + "----")
+		fmt.Printf("Event desired objectives: %v\n", events[i].Desired)
+		fmt.Printf("Event current objectives: %v\n", events[i].Current)
 		f.setCurrentObjectives(events[i].Current)
 		f.setCurrentData(events[i].Data)
 		f.setWorkloadState(events[i].Pods, events[i].Resources, events[i].Annotations)
+		time.Sleep(100 * time.Millisecond)
 		f.setDesiredObjectives(events[i].Intent, events[i].Desired)
 		f.tracer.stepIndex(i)
 
 		planEvent := <-f.ticker
 		if !comparePlans(events[i].Plan, planEvent.plan) {
 			t.Errorf("Expected %v - got %v.", events[i].Plan, planEvent.plan)
+			fmt.Println(strconv.Itoa(i) + "---- FAIL")
+		} else {
+			fmt.Println(strconv.Itoa(i) + "---- PASS")
 		}
 	}
 
@@ -738,7 +840,10 @@ func TestTracesForSanity(t *testing.T) {
 	rdtConfig, err5 := common.LoadConfig("traces/rdt.json", func() interface{} {
 		return &platform.RdtConfig{}
 	})
-	if err1 != nil || err2 != nil || err3 != nil || err4 != nil || err5 != nil {
+	cpuProfileConfig, err6 := common.LoadConfig("traces/cpu_profile.json", func() interface{} {
+		return &profiling.CPUProfileConfig{}
+	})
+	if err1 != nil || err2 != nil || err3 != nil || err4 != nil || err5 != nil || err6 != nil {
 		t.Errorf("Could not load config files!")
 	}
 
@@ -754,6 +859,9 @@ func TestTracesForSanity(t *testing.T) {
 		{name: "rdt_trace", effectsFilename: "traces/trace_rdt/effects.json", eventsFilename: "traces/trace_rdt/events.json", defaults: defaultsConfig.(*common.Config), actuators: map[string]actuatorSetup{
 			"NewCPUScaleActuator": {scaling.NewCPUScaleActuator, *cpuScaleConfig.(*scaling.CPUScaleConfig)},
 			"NewRDTActuator":      {platform.NewRdtActuator, *rdtConfig.(*platform.RdtConfig)}},
+		},
+		{name: "cpu_profiling_synth", effectsFilename: "traces/trace_profileCPU_synth/effects.json", eventsFilename: "traces/trace_profileCPU_synth/events.json", defaults: defaultsConfig.(*common.Config), actuators: map[string]actuatorSetup{
+			"NewCPUProfileActuator": {profiling.NewCPUProfileActuator, *cpuProfileConfig.(*profiling.CPUProfileConfig)}},
 		},
 	}
 	for _, tt := range tests {

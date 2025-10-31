@@ -1,0 +1,39 @@
+name: trivy-scan
+on:
+  push:
+    branches: [ '**' ]
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+jobs:
+  trivy-scans:
+    runs-on: self-hosted
+    name: trivy-scans
+    steps:
+      - uses: actions/checkout@v4
+      - name: trivy fs
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.35.0
+          trivy fs ./
+        shell: bash     
+      - name: trivy config
+        env:
+          TRIVY_SKIP_FILES: 'artefacts/deploy/manifest.yaml,.github/e2e/data/e2e-deployment.yaml'
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.35.0          
+          output=$(trivy config --severity HIGH,CRITICAL ./)
+          if echo "$output" | grep -E "CRITICAL|HIGH"; then            
+            echo "::warning::CRITICAL/HIGH issues found by Trivy config scan - excluding skipped files:"
+            echo "$output"
+            exit 1
+          else
+            echo "No CRITICAL/HIGH severities found by excluding TRIVY_SKIP_FILES from the scans"
+          fi
+        shell: bash
+      - name: trivy fs --all packages
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.35.0
+          trivy fs --list-all-pkgs  --format json .
+        shell: bash
+

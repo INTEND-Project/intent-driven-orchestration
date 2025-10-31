@@ -1,0 +1,15 @@
+{
+    "interpreter": "python3",
+    "analytics_script": "./pkg/planner/actuators/scaling/cpu_rightsizing.py",
+    "cpu_max": 4000,
+    "cpu_rounding": 100,
+    "cpu_safeguard_factor": 0.95,
+    "look_back": 20,
+    "max_proactive_cpu": 4000,
+    "proactive_latency_percentage": 0.1,
+    "endpoint": "cpu-scale-actuator-service",
+    "port": 33334,
+    "mongo_endpoint": "mongodb://planner-mongodb-service:27017/",
+    "plugin_manager_endpoint": "plugin-manager-service",
+    "plugin_manager_port": 33333
+}

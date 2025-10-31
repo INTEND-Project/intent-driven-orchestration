@@ -1,3 +1,6 @@
+[![CI](https://github.com/intel-innersource/libraries.orchestrators.resourcemanagement.intent-driven-orchestration/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/intel-innersource/libraries.orchestrators.resourcemanagement.intent-driven-orchestration/actions/workflows/golangci-lint.yml)
+[![CI](https://github.com/intel-innersource/libraries.orchestrators.resourcemanagement.intent-driven-orchestration/actions/workflows/coverage.yml/badge.svg)](https://github.com/intel-innersource/libraries.orchestrators.resourcemanagement.intent-driven-orchestration/actions/workflows/coverage.yml)
+
 
 # Intent Driven Orchestration Planner
 
@@ -55,7 +58,8 @@ Step 1) add the CRDs:
 
     $ k apply -f artefacts/intents_crds_v1alpha1.yaml
 
-Step 2) deploy the planner (make sure to adapt the configs to your environment):
+Step 2) deploy the planner (make sure to adapt the configs to your environment and ensure that you do not use the 
+default namespace):
 
     $ k create ns ido
     $ k apply -n ido -f artefacts/deploy/manifest.yaml

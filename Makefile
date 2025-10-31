@@ -4,6 +4,7 @@ RMPOD_PLUGIN=rm_pod
 RDT_PLUGIN=rdt
 CPU_PLUGIN=cpu_scale
 ENERGY_PLUGIN=energy
+PROFILE_PLUGIN=cpu_profile
 GO_CILINT_CHECKERS=errcheck,goimports,gosec,gosimple,govet,ineffassign,nilerr,revive,staticcheck,unused
 DOCKER_IMAGE_VERSION=0.4.0
 
@@ -36,7 +37,10 @@ build-plugin-cpu:
 build-plugin-energy:
 	CGO_ENABLED=0 go build -o bin/plugins/${ENERGY_PLUGIN} plugins/${ENERGY_PLUGIN}/cmd/${ENERGY_PLUGIN}.go
 
-build-plugins: build-plugin-scaleout build-plugin-rmpod build-plugin-rdt build-plugin-cpu build-plugin-energy
+build-plugin-profile:
+	CGO_ENABLED=0 go build -o bin/plugins/${PROFILE_PLUGIN} plugins/${PROFILE_PLUGIN}/cmd/${PROFILE_PLUGIN}.go
+
+build-plugins: build-plugin-scaleout build-plugin-rmpod build-plugin-rdt build-plugin-cpu build-plugin-energy build-plugin-profile
 
 controller-images:
 	docker build -t planner:${DOCKER_IMAGE_VERSION} . --no-cache --pull
@@ -47,6 +51,7 @@ plugin-images:
 	docker build -t rdt:${DOCKER_IMAGE_VERSION} -f plugins/rdt/Dockerfile . --no-cache --pull
 	docker build -t cpuscale:${DOCKER_IMAGE_VERSION} -f plugins/cpu_scale/Dockerfile . --no-cache --pull
 	docker build -t energy:${DOCKER_IMAGE_VERSION} -f plugins/energy/Dockerfile . --no-cache --pull
+	docker build -t cpuprofile:${DOCKER_IMAGE_VERSION} -f plugins/cpu_profile/Dockerfile . --no-cache --pull
 
 all-images: controller-images plugin-images
 
@@ -62,8 +67,7 @@ prepare-build:
 	go mod tidy
 
 utest:
-	# Skipping certain trace tests, as they cannot be run safely on public runners.
-	go test -count=1 -parallel 1 -v -skip 'TestTracesForSanity/rdt_trace|TestPowerForSanity/power_efficiency' ./...
+	go test -count=1 -parallel 1 -v ./...
 
 test:
 	hack/run_test.sh

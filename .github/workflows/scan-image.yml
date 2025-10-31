@@ -1,0 +1,76 @@
+name: scan-image
+on:
+  pull_request:
+    branches: [ '**' ]
+  # This workflow would run at 1 AM every day
+  schedule:
+    - cron: '0 1 * * *'    
+  workflow_dispatch:
+    inputs:
+      n:
+        description: parameter
+        type: number
+        default: 0
+        required: false    
+permissions:
+  contents: read
+jobs:
+  image:
+    runs-on: trivy-image
+    name: build and trivy scan image
+    steps:
+      - uses: actions/checkout@v4
+      - name: clean any docker build tmp image
+        run: |
+          docker system prune -f
+      - name: docker
+        run: |
+          make all-images -e DOCKER_IMAGE_VERSION=latest
+        shell: bash
+      - name: trivy image planner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: planner:latest 
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: trivy image scaleout
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: scaleout:latest 
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: trivy image rmpod
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: rmpod:latest 
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: trivy image rdt 
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: rdt:latest 
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: trivy image cpuscale
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: cpuscale:latest 
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: trivy image power_energy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: energy:latest
+          exit-code: "1"
+          ignore-unfixed: false
+          vuln-type: os,library
+      - name: clean image
+        run:  |
+          docker rmi planner scaleout rmpod rdt cpuscale -f
+          docker system prune -f
+

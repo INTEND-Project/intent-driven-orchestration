@@ -1,0 +1,35 @@
+name: e2e
+on:
+  # This workflow would run at 1 AM every day
+  schedule:
+    - cron: '0 1 * * *'
+  issue_comment:
+    types: [created]        
+  workflow_dispatch:
+    inputs:
+      n:
+        description: parameter
+        type: number
+        default: 0
+        required: false      
+permissions:
+  contents: read
+jobs:
+  pr_commented:
+    if: >-
+      ${{ 
+        github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+        contains(github.event.comment.body, '/run-e2e') ||
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch'
+      }}
+    runs-on: ido-e2e
+    name: e2e test
+    steps:
+      - uses: actions/checkout@v4
+      - name: build images
+        run: |
+          make all-images -e DOCKER_IMAGE_VERSION=e2e
+      - name: run tests
+        run: |
+          .github/e2e/run_e2e.sh

@@ -1,0 +1,22 @@
+{
+    "test-ns/p50latency": {
+        "query": "histogram_quantile(0.5,sum(irate(response_latency_ms_bucket{namespace=\"%s\",%s=\"%s\",direction=\"inbound\"}[30s]))by(le,%s))",
+        "endpoint": "http://prometheus.linkerd-viz:9090/api/v1/query"
+    },
+    "test-ns/p95latency": {
+        "query": "histogram_quantile(0.95,sum(irate(response_latency_ms_bucket{namespace=\"%s\",%s=\"%s\",direction=\"inbound\"}[30s]))by(le,%s))",
+        "endpoint": "http://prometheus.linkerd-viz:9090/api/v1/query"
+    },
+    "test-ns/p99latency": {
+        "query": "histogram_quantile(0.99,sum(irate(response_latency_ms_bucket{namespace=\"%s\",%s=\"%s\",direction=\"inbound\"}[30s]))by(le,%s))",
+        "endpoint": "http://prometheus.linkerd-viz:9090/api/v1/query"
+    },
+    "test-ns/throughput": {
+        "query": "sum(irate(request_total{namespace=\"%s\",%s=\"%s\",direction=\"inbound\"}[30s]))by(le,%s)",
+        "endpoint": "http://prometheus.linkerd-viz:9090/api/v1/query"
+    },
+    "test-ns/availability": {
+        "query": "",
+        "endpoint": ""
+    }
+}

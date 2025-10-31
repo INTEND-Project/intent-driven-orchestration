@@ -1,0 +1,32 @@
+name: coverage
+on:
+  push:
+    branches: [ '**' ]
+permissions:
+  contents: read
+jobs:
+  coverage:
+    runs-on: [self-hosted, linux, x64]
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: vendor
+        run: go mod vendor
+      - name: Test
+        run: go test -covermode=count -coverprofile=coverage_raw.out ./...
+      - name: Coverage
+        run:  |
+          cat coverage_raw.out | grep -v "protobuf" > cover_0.out
+          cat cover_0.out | grep -v "generated" > cover_1.out
+          cat cover_1.out | grep -v "main.go" > cover_2.out
+          cat cover_2.out | grep -E -v "/plugins/\w+/cmd" > coverage.out 
+          coverage=$(go tool cover -func coverage.out | grep total | awk '{print $3}' | tr -d % )
+          echo "Total coverage : $coverage %"
+          if (( $(echo "$coverage 85" | awk '{print ($1 > $2)}') ));
+          then echo "Passed"; else (echo "Failed" && exit 1); fi;
+

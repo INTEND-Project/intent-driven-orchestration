@@ -1,0 +1,25 @@
+name: golangci-lint
+on:
+  push:
+    branches: [ '**' ]
+permissions:
+  contents: read
+jobs:
+  golangci:
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: self-hosted
+    name: golangci-lint
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          make golangci-lint
+        shell: bash

@@ -1,0 +1,45 @@
+{
+  "interpreter": "echo",
+  "analytics_script": "",
+  "prediction_script": "../../planner/actuators/profiling/test_predict.py",
+  "cpu_max": 4000,
+  "cpu_profiles": [
+    {
+      "id": 1,
+      "name": "standard",
+      "cpu_manager": 0,
+      "affinity": 0,
+      "settings": {}
+    },
+    {
+      "id": 2,
+      "name": "exclusive",
+      "cpu_manager": 0,
+      "affinity": 0,
+      "settings": {"cpu_manager_policy": "static"}
+    },
+    {
+      "id": 3,
+      "name": "pexclusive",
+      "cpu_manager": 0,
+      "affinity": 0,
+      "settings": 
+      {
+        "cpu_manager_policy": "static",
+        "full_pcpu_only": "true"
+      }
+    },
+    {
+      "id": 4,
+      "name": "topology-aware",
+      "cpu_manager": 0,
+      "affinity": 0,
+      "settings": {
+        "cpu_manager_policy": "static",
+        "topology_manager_policy": "besteffort",
+        "topology-manager-scope": "pod"
+      }
+    }
+  ]
+}
+
