@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cpu-profile-configmap
+data:
+  defaults.json: |-
+    {
+      "interpreter": "python3",
+      "analytics_script": "./pkg/planner/actuators/profiling/analyze.py",
+      "prediction_script": "./pkg/planner/actuators/profiling/predict.py",
+      "cpu_max": 20000,
+      "look_back": 20,
+      "endpoint": "cpu-profile-actuator-service",
+      "port": 33334,
+      "mongo_endpoint": "mongodb://planner-mongodb-service:27017/",
+      "telemetry_endpoint": "",
+      "plugin_manager_endpoint": "plugin-manager-service",
+      "plugin_manager_port": 33333,
+      "cpu_profiles": [
+        {
+          "id": 1,
+          "name": "default",
+          "cpu_manager": 0,
+          "affinity": 1,
+          "settings": {}
+        },
+        {
+          "id": 2,
+          "name": "exclusive",
+          "cpu_manager": 0,
+          "affinity": 1,
+          "settings":
+            {"cpu_manager_policy": "static"}
+        },
+        {
+          "id": 3,
+          "name": "numa_exclusive",
+          "cpu_manager": 0,
+          "affinity": 1,
+          "settings":
+            {"topology_policy": "single-numa-node"}
+        },
+        {
+          "id": 4,
+          "name": "pexclusive",
+          "cpu_manager": 0,
+          "affinity": 1,
+          "settings":
+            {"full_pcpu_only": "true"}
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-profile-actuator
+  labels:
+    name: cpu-profile-actuator
+spec:
+  serviceAccountName: planner-service-account
+  containers:
+    - name: cpu-profile-actuator
+      image: 127.0.0.1:5000/cpu-profiling:0.0.1 
+      imagePullPolicy: Always
+      args: [ "-config", "/config/defaults.json", "-v", "2" ]
+      ports:
+        - containerPort: 33334
+      securityContext:
+        capabilities:
+          drop: [ 'ALL' ]
+        seccompProfile:
+          type: RuntimeDefault
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      resources:
+        limits:
+          memory: "1024Mi"
+          cpu: "2000m"
+        requests:
+          memory: "512Mi"
+          cpu: "500m"
+      volumeMounts:
+        - name: cpu-profile-configmap-volume
+          mountPath: /config/
+        - name: matplotlib-tmp
+          mountPath: /var/tmp
+      env:
+        # Needed for the analytics python script.
+        - name: MONGO_URL
+          value: "mongodb://planner-mongodb-service:27017/"
+        - name: MPLCONFIGDIR
+          value: /var/tmp
+  volumes:
+    - name: matplotlib-tmp
+      emptyDir:
+        sizeLimit: 100Mi
+    - name: cpu-profile-configmap-volume
+      configMap:
+        name: cpu-profile-configmap
+        items:
+          - key: defaults.json
+            path: defaults.json
+  tolerations:
+    - key: node-role.kubernetes.io/master
+      operator: Exists
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cpu-profile-actuator-service
+spec:
+  clusterIP: None
+  selector:
+    name: cpu-profile-actuator
+  ports:
+    - protocol: TCP
+      port: 33334
+      targetPort: 33334

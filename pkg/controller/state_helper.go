@@ -58,6 +58,9 @@ func getPods(clientSet kubernetes.Interface,
 		}
 		// for each container an entry is created in the map; the key holds a container index, resource name and identifier for requests and limits.
 		if len(containerResources) < 1 {
+			if len(annotations) != len(pod.ObjectMeta.Annotations) {
+				annotations = pod.ObjectMeta.Annotations
+			}
 			for i, container := range pod.Spec.Containers {
 				for name, requests := range container.Resources.Requests {
 					containerResources[strings.Join([]string{strconv.Itoa(i), name.String(), "requests"}, resourceDelimiter)] = requests.MilliValue()
